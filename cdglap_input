@@ -1,0 +1,22 @@
+dla 0
+lin_collim 0
+linear_evol 0
+constant_qw 0
+bare_qw 0.5
+pmin 15.0
+pmax 1000.0
+np 1000
+ny 5
+running_alpha 1
+recoveryparam 0.4052847346
+qhatlogfac 1.0
+g 1.82
+temp 0.256469
+temp2 0.0739917
+ehat 0.0566785
+qhat 0.0195018
+qhatL2 7.73236
+qhatL3 58.7783
+length 32.17
+system LHC
+EndOfData

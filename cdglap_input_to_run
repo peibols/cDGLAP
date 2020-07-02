@@ -1,0 +1,22 @@
+dla 0
+lin_collim 0
+linear_evol 0
+constant_qw 0
+bare_qw 0.5
+pmin 25.0
+pmax 1000.0
+np 1000
+ny 5
+running_alpha 1
+recoveryparam SET_RECOVERYPARAM
+qhatlogfac SET_QHATFACLOG
+g SET_G
+qhat SET_QHAT
+qhatL2 SET_L2QHAT
+qhatL3 SET_L3QHAT
+length SET_LENGTH
+temp SET_TEMP
+temp2 SET_2TEMP
+ehat SET_EHAT
+system LHC
+EndOfData

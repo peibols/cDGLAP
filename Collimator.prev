@@ -1,0 +1,160 @@
+#include <gsl/gsl_errno.h>
+#include <gsl/gsl_integration.h>
+#include <gsl/gsl_complex.h>
+#include <gsl/gsl_complex_math.h>
+#include <iostream>
+
+#include "Collimator.h"
+#include "Util.h"
+
+using namespace Util;
+
+Collimator::Collimator(const InitData &DATA_in, double Ejet, double Rjet, double nspec, std::string flav, int in_nu, int in_nr) : DATA(DATA_in)
+{
+
+  if ( flav != "quark" && flav != "gluon" ) { std::cout << " Unrecognized flav in collimator constructor = " << flav << std::endl; exit(0); }
+  else _flav = flav;
+
+  if ( DATA.constant_qw ) {
+
+    _bare_qw = DATA.bare_qw;  
+
+  }
+  else if ( DATA.bare_qw_from_file ) {
+  
+    //read_bare_qw( Ejet, Rjet, nspec );  
+  
+  }
+  else {
+    
+    set_bare_qw( Ejet, Rjet, nspec );  
+  
+  }
+
+  _Rjet = Rjet;
+
+  int np = DATA.np;
+  for (int ip=0; ip<np+1; ip++) {
+    _collim.push_back( _bare_qw );
+    //_collim.push_back( 1. );
+  }   
+  for (int ip=0; ip<np+1; ip++) _temp_collim.push_back( 0. ); 
+
+}
+
+struct radspec_params
+{
+  double nu_int;
+  std::string flav;
+  double omc;
+  double Rjet, qhat, length;
+  bool dla;
+  double q0;
+  bool running_alpha;
+  bool soft_regime;
+};
+
+inline double radspec( double x, void *params )
+{
+
+  struct radspec_params *p = (struct radspec_params*) params;
+  
+  double nu_int = p->nu_int;
+  std::string flav = p->flav;
+  double omc = p->omc;
+  double Rjet = p->Rjet;
+  double qhat = p->qhat;
+  double length = p->length;
+  bool dla = p->dla;
+  double q0 = p->q0;
+  bool running_alpha = p->running_alpha;
+  bool soft_regime = p->soft_regime;
+
+  double u = sqrt( omc / 2.0 / x );
+  
+  gsl_complex z = gsl_complex_rect(u,u);
+  double clog = log( gsl_complex_abs( gsl_complex_cosh( z ) ) );
+
+  double t = pow( x * qhat, 1./4. ); 
+  double abarmed;
+  if (running_alpha) abarmed = alphas( t, dla, q0 ) / M_PI;
+  else abarmed = 0.3 / M_PI;
+  if ( flav == "quark") abarmed *= CF;
+  else abarmed *= CA;
+
+  double BDMPS = 2.0 / x * abarmed * clog; // Full
+  //double BDMPS = 2.0 / x * abarmed * u;  // Soft
+
+  //return BDMPS * ( 1.0 - exp( -nu_int * x ) ) * exp( -0.57 * Rjet * Rjet );
+ 
+  //return BDMPS * ( 1.0 - exp( -nu_int * x ) ); 
+
+  if (!soft_regime) return BDMPS * ( 1.0 - exp( -nu_int * x ) ) * exp ( -2.0 * x * x * Rjet * Rjet / qhat / length );
+  else return BDMPS * ( 1.0 - exp( -nu_int * x * ( 1. - 4. * Rjet * Rjet / M_PI / M_PI ) ) );
+  //else return BDMPS * ( 1.0 - exp( nu_int * x * 4. * Rjet * Rjet / M_PI / M_PI ) );
+ 
+}
+
+void Collimator::set_bare_qw(double Ejet, double Rjet, double nspec) {
+
+  double f_abarmed = DATA.abarmed * CF;
+  if ( _flav == "gluon" ) f_abarmed *= CA / CF;
+
+  double nu_int = nspec / Ejet;
+  double oms = f_abarmed * f_abarmed * DATA.omc;
+  double omr = sqrt( DATA.qhat * DATA.length ) / Rjet; 
+
+  std::cout << " nu_int = " << nu_int << " wc= " << DATA.omc << " oms= " << oms << " omr= " << omr << std::endl; 
+
+  int iter = 1000;
+  gsl_integration_workspace *w = gsl_integration_workspace_alloc (iter);
+  
+  gsl_function F;
+  F.function = &radspec;
+  
+  double rel_err = 1e-7;
+  
+  bool soft_regime=1;
+  struct radspec_params params_soft = { nu_int, _flav, DATA.omc,
+				  Rjet, DATA.qhat, DATA.length,
+ 				  DATA.dla, DATA.q0, DATA.running_alpha, soft_regime };
+  F.params = &params_soft;
+
+  double result_soft, error_soft;
+  
+  double w_lo = 0.;
+  double w_hi = oms;
+  //w_hi = omr;
+
+  gsl_integration_qags (&F, w_lo, w_hi, 0, rel_err, iter,
+                        w, &result_soft, &error_soft);
+ 
+  
+  soft_regime=0;
+  struct radspec_params params_hard = { nu_int, _flav, DATA.omc,
+				  Rjet, DATA.qhat, DATA.length,
+ 				  DATA.dla, DATA.q0, DATA.running_alpha, soft_regime };
+  F.params = &params_hard;
+
+  double result_hard, error_hard;
+  
+  w_lo = oms;
+
+  gsl_integration_qagiu (&F, w_lo, 0, rel_err, iter,
+                        w, &result_hard, &error_hard);
+  
+ 
+  //result_hard=0.;
+ 
+  double temp = 0.45;
+  double ehat = DATA.qhat / temp;
+  if (_flav=="quark") ehat *= CF/CA;
+  double elastic = exp(-ehat * (1-4./M_PI/M_PI*Rjet*Rjet) * DATA.length * nu_int); 
+
+  _bare_qw = exp( - (result_soft + result_hard) );
+  //_bare_qw *= elastic;
+  //std::cout << " result= " << result << " error= " << error << std::endl;
+  //exit(0);   
+
+  gsl_integration_workspace_free(w);
+}

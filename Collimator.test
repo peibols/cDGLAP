@@ -1,0 +1,99 @@
+#include <gsl/gsl_errno.h>
+#include <gsl/gsl_spline.h>
+#include <gsl/gsl_interp.h>
+#include <gsl/gsl_complex.h>
+#include <gsl/gsl_complex_math.h>
+#include <iostream>
+
+#include "Collimator.h"
+
+Collimator::Collimator(const InitData &DATA_in, double Ejet, double Rjet) : DATA(DATA_in)
+{
+
+  set_bare_qw( Ejet, Rjet );  
+
+  int np = DATA.np;
+  for (int ip=0; ip<np+1; ip++) _collim.push_back( _bare_qw ); 
+
+}
+
+  gsl_complex z = gsl_complex_rect(u,u);
+  double clog = log( gsl_complex_abs( gsl_complex_cos( z ) ) );
+  
+  double BDMPS = 2.0 / x * abarmed * clog;
+  //std::cout << " bdmps at x = " << x << " BDMPS= " << BDMPS << std::endl;
+
+  // Change of variables
+  double zout = omc / 2.0 / x / x * ( 1.0 - 4.0 * Rjet * Rjet / M_PI / M_PI );
+  double zBDMPS = 2.0 / x * abarmed * log(cosh(x)*cosh(x)-sin(x)*sin(x));
+  //return zBDMPS;
+  //return (1.0 - exp( -nu_int * zout ));
+  //return zBDMPS * (nu_int * zout);
+  return zBDMPS * (1.0 - exp( -nu_int * zout ));
+
+  if (x >= oms ) {
+    return 0;
+    //std::cout << " facsbdmps at x = " << x << " facsBDMPS= " << BDMPS * ( 1.0 - exp( -nu_int * x ) ) * exp ( -2.0 * x * x * Rjet * Rjet / qhat / length ) << std::endl;
+    return BDMPS * ( 1.0 - exp( -nu_int * x ) ) * exp ( -2.0 * x * x * Rjet * Rjet / qhat / length );
+  }
+  else {
+    //return 0;
+    double x_out = x * ( 1.0 - 4.0 * Rjet * Rjet / M_PI / M_PI );   
+    if ( nu_int * x_out < 0.1 ) return 2.0 * abarmed * clog * nu_int * ( 1.0 - 4.0 * Rjet * Rjet / M_PI / M_PI );
+    return BDMPS * ( 1.0 - exp( -nu_int * x_out ) );
+  }
+ 
+}
+
+void Collimator::set_bare_qw(double Ejet, double Rjet) {
+
+  int nspec = 6;
+
+  double nu_int = nspec / Ejet;
+  double oms = DATA.abarmed * DATA.abarmed * DATA.omc;
+
+  double w[10000];
+  double integrand[10000];
+
+  for (unsigned a=0; a<10000; a++) {
+    w[a] = 
+  }
+
+  std::cout << " nu_int = " << nu_int << " wc= " << DATA.omc << " ws= " << oms << std::endl;
+
+  int iter = 10000;
+  gsl_integration_workspace *w = gsl_integration_workspace_alloc (iter);
+  
+  gsl_set_error_handler_off();
+
+  gsl_function F;
+  F.function = &radspec;
+  struct radspec_params params = { nu_int, DATA.abarmed, DATA.omc,
+				  oms, Rjet, DATA.qhat, DATA.length };
+  F.params = &params;
+
+  double result, error;
+
+  //double omr = sqrt( DATA.qhat * DATA.length ) / Rjet; 
+  double rel_err = 1e-7;
+  double w_lo = 0.0001;
+  w_lo = sqrt(DATA.omc/2./oms);
+  double w_hi = 1000.;
+  int status;
+  do {
+
+    //status = gsl_integration_qagiu (&F, w_lo, 0, rel_err, iter,
+      //                  w, &result, &error);
+
+    status = gsl_integration_qags (&F, w_lo, w_hi, 0, rel_err, iter,
+                        w, &result, &error);
+    rel_err *= 1.1;
+
+  } while ( status == GSL_EDIVERGE || status == GSL_EROUND );
+
+  _bare_qw = exp( -result );
+  std::cout << " result= " << result << " error= " << error << " rel_err= " << rel_err << std::endl;
+  exit(0);   
+
+  gsl_integration_workspace_free(w);
+}
